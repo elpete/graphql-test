@@ -1,65 +1,65 @@
 component {
 
     variables.luke = {
-            id        : '1000',
-            name      : 'Luke Skywalker',
-            friends   : ['1002', '1003', '2000', '2001'],
-            appearsIn : [4, 5, 6],
-            homePlanet: 'Tatooine'
+        id: "1000",
+        name: "Luke Skywalker",
+        friends: [ "1002", "1003", "2000", "2001" ],
+        appearsIn: [ "NEWHOPE", "EMPIRE", "JEDI" ],
+        homePlanet: "Tatooine"
     };
 
     variables.vader = {
-            id        : '1001',
-            name      : 'Darth Vader',
-            friends   : ['1004'],
-            appearsIn : [4, 5, 6],
-            homePlanet: 'Tatooine',
+        id: "1001",
+        name: "Darth Vader",
+        friends: [ "1004" ],
+        appearsIn: [ "NEWHOPE", "EMPIRE", "JEDI" ],
+        homePlanet: "Tatooine",
     };
 
     variables.han = {
-            id       : '1002',
-            name     : 'Han Solo',
-            friends  : ['1000', '1003', '2001'],
-            appearsIn: [4, 5, 6],
+        id: "1002",
+        name: "Han Solo",
+        friends: [ "1000", "1003", "2001" ],
+        appearsIn: [ "NEWHOPE", "EMPIRE", "JEDI" ],
     };
 
     variables.leia = {
-            id        : '1003',
-            name      : 'Leia Organa',
-            friends   : ['1000', '1002', '2000', '2001'],
-            appearsIn : [4, 5, 6],
-            homePlanet: 'Alderaan',
+        id: "1003",
+        name: "Leia Organa",
+        friends: [ "1000", "1002", "2000", "2001" ],
+        appearsIn: [ "NEWHOPE", "EMPIRE", "JEDI" ],
+        homePlanet: "Alderaan",
     };
 
     variables.tarkin = {
-            id       : '1004',
-            name     : 'Wilhuff Tarkin',
-            friends  : ['1001'],
-            appearsIn: [4],
+        id: "1004",
+        name: "Wilhuff Tarkin",
+        friends: [ "1001" ],
+        appearsIn: [ "NEWHOPE" ],
     };
 
     variables.humans = {
-        '1000': variables.luke,
-        '1001': variables.vader,
-        '1002': variables.han,
-        '1003': variables.leia,
-        '1004': variables.tarkin,
+        "1000": variables.luke,
+        "1001": variables.vader,
+        "1002": variables.han,
+        "1003": variables.leia,
+        "1004": variables.tarkin,
     };
 
     variables.threepio = {
-            id             : '2000',
-            name           : 'C-3PO',
-            friends        : ['1000', '1002', '1003', '2001'],
-            appearsIn      : [4, 5, 6],
-            primaryFunction: 'Protocol',
+        id: "2000",
+        name: "C-3PO",
+        friends: [ "1000", "1002", "1003", "2001" ],
+        appearsIn: [ "NEWHOPE", "EMPIRE", "JEDI" ],
+        primaryFunction: "Protocol",
     };
 
     variables.artoo = {
-            id             : '2001',
-            name           : 'R2-D2',
-            friends        : ['1000', '1002', '1003'],
-            appearsIn      : [4, 5, 6],
-            primaryFunction: 'Astromech',
+        id: "2001",
+        name: "R2-D2",
+        friends: [ "1000", "1002", "1003" ],
+        appearsIn: [ "NEWHOPE", "EMPIRE", "JEDI" ],
+        primaryFunction: "Astromech",
     };
 
     variables.droids = {
@@ -86,13 +86,13 @@ component {
                     ) )
                     .dataFetcher( "human", createDynamicProxy(
                         new models.proxies.DataFetcher( function( environment ) {
-                            return variables.humans[ arguments.environment.getArguments().id ];
+                            return variables.humans[ arguments.environment.getArguments().get( "id" ) ];
                         } ),
                         [ "graphql.schema.DataFetcher" ]
                     ) )
                     .dataFetcher( "droid", createDynamicProxy(
                         new models.proxies.DataFetcher( function( environment ) {
-                            return variables.droids[ arguments.environment.getArguments().id ];
+                            return variables.droids[ arguments.environment.getArguments().get( "id" ) ];
                         } ),
                         [ "graphql.schema.DataFetcher" ]
                     ) )
@@ -110,7 +110,19 @@ component {
             .type(
                 createObject( "java", "graphql.schema.idl.TypeRuntimeWiring" )
                     .newTypeWiring( "Character" )
-                    .typeResolver( getCharacterTypeResolver() )
+                    .typeResolver( createDynamicProxy(
+                        new models.proxies.TypeResolver( function( env ) {
+                            var id = arguments.env.getObject().get( "id" );
+                            if ( variables.humans.keyExists( id ) ) {
+                                return env.getSchema().getObjectType( "Human" );
+                            }
+                            if ( variables.droids.keyExists( id ) ) {
+                                return env.getSchema().getObjectType( "Droid" );
+                            }
+                            return;
+                        } ),
+                        [ "graphql.schema.TypeResolver" ]
+                    ) )
             )
             .build()
 
@@ -119,7 +131,16 @@ component {
 
         var build = createObject( "java", "graphql.GraphQL" ).newGraphQL( graphQLSchema ).build();
         var body = event.getHTTPContent( json = true );
-        param body.query = "";
+        if ( ! isStruct( body ) ) {
+            event.renderData(
+                type = "json",
+                statusCode = 500,
+                data = {
+                    "errors": "Invalid body. Received [#body#]"
+                }
+            );
+            return;
+        }
         var executionResult = build.execute( body.query );
 
         if ( executionResult.isDataPresent() ) {
@@ -142,229 +163,11 @@ component {
 
     }
 
-    private function getCharacter( required string id ) {
-        if ( variables.humans.keyExists( id ) ) {
-            return variables.humans[ id ];
-        }
-
-        if ( variables.droids.keyExists( id ) ) {
-            return variables.droids[ id ];
-        }
-
-        return;
-    }
-
-    private function getEpisodeEnum() {
-        return createObject( "java", "graphql.schema.GraphQLEnumType" )
-            .newEnum()
-            .name( "Episode" )
-            .description( "One of the films in the Star Wars Trilogy" )
-            .value( "NEWHOPE", 4, "Released in 1977." )
-            .value( "EMPIRE", 5, "Released in 1980." )
-            .value( "JEDI", 6, "Released in 1983." )
-            .comparatorRegistry( getByNameRegistry() )
-            .build();
-    }
-
-    private function getCharacterInterface() {
-        return createObject( "java", "graphql.schema.GraphQLInterfaceType" )
-            .newInterface()
-            .name( "Character" )
-            .description( "A character in the Star Wars Trilogy" )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "id" )
-                    .description( "The id of the character." )
-                    .type(
-                        createObject( "java", "graphql.schema.GraphQLNonNull" ).nonNull(
-                            createObject( "java", "graphql.Scalars" ).GraphQLString
-                        )
-                    )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "name" )
-                    .description( "The name of the character." )
-                    .type( createObject( "java", "graphql.Scalars" ).GraphQLString )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "friends" )
-                    .description( "The friends of the character, or an empty list if they have none." )
-                    .type(
-                        createObject( "java", "graphql.schema.GraphQLList" ).list(
-                            createObject( "java", "graphql.schema.GraphQLTypeReference" ).typeRef( "Character" )
-                        )
-                    )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "appearsIn" )
-                    .description( "Which movies they appear in." )
-                    .type(
-                        createObject( "java", "graphql.schema.GraphQLList" ).list(
-                            getEpisodeEnum()
-                        )
-                    )
-            )
-            .typeResolver( getCharacterTypeResolver() )
-            .comparatorRegistry(getByNameRegistry())
-            .build();
-    }
-
-    private function getCharacterTypeResolver() {
-        return createDynamicProxy(
-            new models.proxies.TypeResolver( function( env ) {
-                var id = arguments.env.getObject().id;
-                if ( variables.humans.keyExists( id ) ) {
-                    return getHumanType();
-                }
-                if ( variables.droids.keyExists( id ) ) {
-                    return getDroidType();
-                }
-                return;
-            } ),
-            [ "graphql.schema.TypeResolver" ]
-        );
-    }
-
-    private function getHumanType() {
-        return createObject( "java", "graphql.schema.GraphQLObjectType" )
-            .newObject()
-            .name( "Human" )
-            .description("A humanoid creature in the Star Wars universe.")
-            .withInterface( getCharacterInterface() )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "id" )
-                    .description( "The id of the human." )
-                    .type(
-                        createObject( "java", "graphql.schema.GraphQLNonNull" ).nonNull(
-                            createObject( "java", "graphql.Scalars" ).GraphQLString
-                        )
-                    )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "name" )
-                    .description( "The name of the human." )
-                    .type(
-                        createObject( "java", "graphql.Scalars" ).GraphQLString
-                    )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "friends" )
-                    .description( "The friends of the human, or an empty list if they have none." )
-                    .type(
-                        createObject( "java", "graphql.schema.GraphQLList" ).list(
-                            getCharacterInterface()
-                        )
-                    )
-                    .dataFetcher( getFriendsDataFetcher() )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "appearsIn" )
-                    .description( "Which movies they appear in." )
-                    .type(
-                        createObject( "java", "graphql.schema.GraphQLList" ).list(
-                            getEpisodeEnum()
-                        )
-                    )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "homePlanet" )
-                    .description( "The home planet of the human, or null if unknown." )
-                    .type(
-                        createObject( "java", "graphql.Scalars" ).GraphQLString
-                    )
-            )
-            .comparatorRegistry(
-                getByNameRegistry()
-            )
-            .build();
-    }
-
-    private function getDroidType() {
-        return createObject( "java", "graphql.schema.GraphQLObjectType" )
-            .newObject()
-            .name( "Droid" )
-            .description( "A mechanical creature in the Star Wars universe." )
-            .withInterface( getCharacterInterface() )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "id" )
-                    .description( "The id of the droid." )
-                    .type(
-                        createObject( "java", "graphql.schema.GraphQLNonNull" ).nonNull(
-                            createObject( "java", "graphql.Scalars" ).GraphQLString
-                        )
-                    )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "name" )
-                    .description( "The name of the droid." )
-                    .type(
-                        createObject( "java", "graphql.Scalars" ).GraphQLString
-                    )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "friends" )
-                    .description( "The friends of the droid, or an empty list if they have none." )
-                    .type(
-                        createObject( "java", "graphql.schema.GraphQLList" ).list(
-                            getCharacterInterface()
-                        )
-                    )
-                    .dataFetcher( getFriendsDataFetcher() )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "appearsIn" )
-                    .description( "Which movies they appear in." )
-                    .type(
-                        createObject( "java", "graphql.schema.GraphQLList" ).list(
-                            getEpisodeEnum()
-                        )
-                    )
-            )
-            .field(
-                createObject( "java", "graphql.schema.GraphQLFieldDefinition" )
-                    .newFieldDefinition()
-                    .name( "primaryFunction" )
-                    .description( "The primary function of the droid." )
-                    .type(
-                        createObject( "java", "graphql.Scalars" ).GraphQLString
-                    )
-            )
-            .comparatorRegistry(
-                getByNameRegistry()
-            )
-            .build();
-    }
-
     private function getFriendsDataFetcher() {
         return createDynamicProxy(
             new models.proxies.DataFetcher( function( environment ) {
                 var friends = [];
-                for ( var id in arguments.environment.getSource().friends ) {
+                for ( var id in arguments.environment.getSource().get( "friends" ) ) {
                     var character = getCharacter( id );
                     if ( ! isNull( character ) ) {
                         friends.append( character );
@@ -376,13 +179,16 @@ component {
         );
     }
 
-    private function getByNameRegistry() {
-        return createDynamicProxy(
-            new models.proxies.GraphqlTypeComparatorRegistry( function( environment ) {
-                return createObject( "java", "graphql.schema.GraphqlTypeComparators" ).byNameAsc()
-            } ),
-            [ "graphql.schema.GraphqlTypeComparatorRegistry" ]
-        );
+    private function getCharacter( required string id ) {
+        if ( variables.humans.keyExists( id ) ) {
+            return variables.humans[ id ];
+        }
+
+        if ( variables.droids.keyExists( id ) ) {
+            return variables.droids[ id ];
+        }
+
+        return;
     }
 
 }
